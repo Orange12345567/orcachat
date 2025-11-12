@@ -31,10 +31,10 @@ export default function Chat({ roomCode = "GLOBAL" }: { roomCode?: string }) {
   // theme
   const [theme, setTheme] = useState<string>(() => {
     if (typeof window === "undefined") return "light";
-    return localStorage.getItem(LS_THEME) || "light";
+    return localStorage.getItem(LS_THEME) || "dark";
   });
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark");
+    document.documentElement.classList.add("dark");
     localStorage.setItem(LS_THEME, theme);
   }, [theme]);
 
@@ -227,7 +227,7 @@ export default function Chat({ roomCode = "GLOBAL" }: { roomCode?: string }) {
 
   // render
   return (
-    <div className="flex h-screen w-full bg-gray-50 dark:bg-neutral-950">
+    <div className="flex h-screen w-full bg-black">
       {/* Sidebar (desktop) */}
       <div className="hidden md:block">
         <SidebarUsers users={people} meId={userId} onStartDM={(u)=>setDmTarget(u)} />
@@ -236,7 +236,7 @@ export default function Chat({ roomCode = "GLOBAL" }: { roomCode?: string }) {
       {/* Mobile overlay */}
       {showSidebar && (
         <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={()=>setShowSidebar(false)}>
-          <div className="absolute left-0 top-0 h-full w-72 bg-white dark:bg-neutral-900" onClick={(e)=>e.stopPropagation()}>
+          <div className="absolute left-0 top-0 h-full w-72 bg-black" onClick={(e)=>e.stopPropagation()}>
             <SidebarUsers users={people} meId={userId} onStartDM={(u)=>{ setDmTarget(u); setShowSidebar(false); }} />
           </div>
         </div>
@@ -245,34 +245,35 @@ export default function Chat({ roomCode = "GLOBAL" }: { roomCode?: string }) {
       {/* Chat area */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <header className="sticky top-0 z-30 flex items-center justify-between border-b bg-white/80 backdrop-blur dark:bg-neutral-900/80 dark:border-neutral-800 px-3 py-2">
+        <header className="sticky top-0 z-30 flex items-center justify-between border-b bg-black border-neutral-800 px-3 py-2">
           <div className="flex items-center gap-2">
-            <button className="md:hidden rounded-lg border px-2 py-1 text-sm dark:border-neutral-700" onClick={()=>setShowSidebar(true)}>Users</button>
+            <button className="md:hidden rounded-lg border px-2 py-1 text-sm border-neutral-700" onClick={()=>setShowSidebar(true)}>Users</button>
             <h1 className="text-sm font-semibold">{roomName}</h1>
-            <span className="ml-2 rounded bg-neutral-100 px-2 py-0.5 text-[11px] dark:bg-neutral-800">Code: {roomCode}</span>
+            <span className="ml-2 rounded bg-neutral-100 px-2 py-0.5 text-[11px] bg-neutral-900">Code: {roomCode}</span>
           </div>
           <div className="flex items-center gap-2">
-            <button className="rounded-lg border px-2 py-1 text-xs dark:border-neutral-700" onClick={()=>location.href="/"}>Go to Main Menu</button>
-            <button className="rounded-lg border px-2 py-1 text-xs dark:border-neutral-700" onClick={()=>location.href="/room/GLOBAL"}>Go to Global</button>
-            <button className="rounded-lg border px-2 py-1 text-xs dark:border-neutral-700" onClick={()=>setTheme(theme==="light"?"dark":"light")}>{theme==="light"?"Dark":"Light"}</button>
+            <button className="rounded-lg border px-2 py-1 text-xs border-neutral-700" onClick={()=>location.href="/"}>Go to Main Menu</button>
+            <button className="rounded-lg border px-2 py-1 text-xs border-neutral-700" onClick={()=>location.href="/room/GLOBAL"}>Go to Global</button>
+            <button className="rounded-lg border px-2 py-1 text-xs border-neutral-700" onClick={()=>setTheme(theme==="light"?"dark":"light")}>{theme==="light"?"Dark":"Light"}</button>
           </div>
         </header>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2" style={{ background: roomBg }}>
+        <div className="flex-1 overflow-y-auto p-3 space-y-2" style={{ background: "#000" }}>
           {messages.map(m => (
             <MessageBubble key={m.id} m={m} onDelete={(id)=>deleteMessage(id)} />
           ))}
         </div>
 
         {/* Composer */}
-        <div className="border-t bg-white dark:bg-neutral-900 dark:border-neutral-800 p-2">
+        <div className="border-t bg-black border-neutral-800 p-2">
           <div className="flex items-center gap-2">
             <input
               value={input}
               onChange={e=>setInput(e.target.value)}
+              onKeyDown={(e)=>{ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); sendMessage(); } }}
               placeholder={dmTarget ? `DM to ${dmTarget.name}` : "Type a message..."}
-              className="flex-1 rounded-lg border px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-800"
+              className="flex-1 rounded-lg border px-3 py-2 text-sm border-neutral-700 bg-neutral-900"
               style={{ fontFamily: profile.fontFamily, color: profile.color }}
             />
             <button onClick={sendMessage} className="rounded-lg bg-black text-white px-3 py-2 text-sm dark:bg-white dark:text-black">Send</button>
@@ -281,7 +282,7 @@ export default function Chat({ roomCode = "GLOBAL" }: { roomCode?: string }) {
           <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 text-xs">
             <div className="flex items-center gap-2">
               <span className="w-20">Name</span>
-              <input value={profile.name} onChange={e=>setProfile({...profile, name: e.target.value})} className="flex-1 rounded border px-2 py-1 dark:border-neutral-700 dark:bg-neutral-800" />
+              <input value={profile.name} onChange={e=>setProfile({...profile, name: e.target.value})} className="flex-1 rounded border px-2 py-1 border-neutral-700 bg-neutral-900" />
             </div>
             <div className="flex items-center gap-2">
               <span className="w-20">Text</span>
@@ -291,13 +292,29 @@ export default function Chat({ roomCode = "GLOBAL" }: { roomCode?: string }) {
             </div>
             <div className="flex items-center gap-2">
               <span className="w-20">Font</span>
-              <select value={profile.fontFamily} onChange={e=>setProfile({...profile, fontFamily: e.target.value})} className="flex-1 rounded border px-2 py-1 dark:border-neutral-700 dark:bg-neutral-800">
+              <select value={profile.fontFamily} onChange={e=>setProfile({...profile, fontFamily: e.target.value})} className="flex-1 rounded border px-2 py-1 border-neutral-700 bg-neutral-900">
                 {FONT_OPTIONS.map(f => <option key={f} value={f}>{f}</option>)}
               </select>
+
+            </div>
+            {/* Font previews */}
+            <div className="col-span-1 md:col-span-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {FONT_OPTIONS.slice(0, 16).map(f => (
+                  <button
+                    key={f}
+                    onClick={()=>setProfile({...profile, fontFamily: f})}
+                    className={"w-full rounded border px-2 py-2 text-left hover:bg-neutral-900 " + (profile.fontFamily===f ? "border-white" : "border-neutral-700")}
+                    style={{ fontFamily: f }}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <span className="w-20">Status</span>
-              <input value={profile.status || ""} onChange={e=>setProfile({...profile, status: e.target.value})} className="flex-1 rounded border px-2 py-1 dark:border-neutral-700 dark:bg-neutral-800" />
+              <input value={profile.status || ""} onChange={e=>setProfile({...profile, status: e.target.value})} className="flex-1 rounded border px-2 py-1 border-neutral-700 bg-neutral-900" />
             </div>
           </div>
         </div>

@@ -11,7 +11,7 @@ export type UserPresence = {
 
 export default function SidebarUsers({ users, meId, onStartDM }: { users: UserPresence[]; meId: string, onStartDM?: (u: UserPresence)=>void }) {
   return (
-    <aside className="w-64 shrink-0 border-r bg-white dark:bg-neutral-900 dark:border-neutral-800">
+    <aside className="w-64 shrink-0 border-r bg-black dark:border-neutral-800">
       <div className="p-3 border-b dark:border-neutral-800">
         <h2 className="text-sm font-semibold">People</h2>
         <p className="text-xs text-gray-500 dark:text-neutral-400">Online in global room</p>
