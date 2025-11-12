@@ -14,6 +14,7 @@ export type Message = {
 
 export default function MessageBubble({ m, onDelete }: { m: Message, onDelete?: (id:string)=>void }) {
   const me = m.isSelf;
+  const bubbleColor = (m as any).bubble || (m as any).meBubble || "#e5e7eb";
   const style: React.CSSProperties = me
     ? { ['--bubble-me' as any]: m.meBubble || "#0b93f6", fontFamily: m.fontFamily }
     : { fontFamily: m.fontFamily, color: m.color };
