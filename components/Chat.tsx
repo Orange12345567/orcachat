@@ -153,7 +153,7 @@ export default function Chat({ roomCode = "GLOBAL" }: { roomCode?: string }) {
 
     setChannel(ch);
     return () => { try { ch.unsubscribe(); } catch {} setChannel(null); };
-  }, [channelName, userId, profile.name, profile.fontFamily, profile.color, profile.status, saveRoster, roster, msgIds]);
+  }, [channelName, userId, profile.name, profile.fontFamily, profile.color, profile.status, saveRoster, roster]);
 
   // send/delete
   const [input, setInput] = useState("");
