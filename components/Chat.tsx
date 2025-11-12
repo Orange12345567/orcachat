@@ -1,516 +1,291 @@
-
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getSupabase } from "@/lib/supabaseClient";
-import SidebarUsers, { UserPresence } from "./SidebarUsers";
-import MessageBubble, { Message } from "./MessageBubble";
-import ErrorPanel from "./ErrorPanel";
-import { clsx } from "clsx";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import type { Message, Profile, Room } from "@/types";
+import TypingDots from "./TypingDots";
+import { v4 as uuidv4 } from "uuid";
+import clsx from "clsx";
 
-
-const LS_PROFILE = "sms_groupchat_profile_v3";
-const LS_UID = "sms_groupchat_uid_v3";
-const LS_OUTBOX = "sms_groupchat_outbox_v2";
-const LS_THEME = "sms_groupchat_theme";
-
-const LS_ROOM = "sms_groupchat_room_v1";
-function genRoomCode() {
-  const s = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let out = "";
-  for (let i=0;i<6;i++) out += s[Math.floor(Math.random()*s.length)];
-  return out;
-}
-
-
-const DEFAULT_FONTS = [
-  "Inter, system-ui, sans-serif",
-  "Arial, Helvetica, sans-serif",
-  "Georgia, serif",
-  "Courier New, monospace",
-  "Comic Sans MS, cursive",
-  "Trebuchet MS, sans-serif",
-  "Times New Roman, serif",
-  "Verdana, sans-serif",
-  "Tahoma, sans-serif",
-  "Gill Sans, sans-serif",
-  "Lucida Sans, sans-serif",
-  "Palatino Linotype, serif",
-  "Garamond, serif",
-  "Bookman, serif",
-  "Avant Garde, sans-serif",
-  "Futura, sans-serif",
-  "Franklin Gothic Medium, sans-serif",
-  "Didot, serif",
-  "Baskerville, serif",
-  "Rockwell, serif",
-  "Copperplate, serif",
-  "Monaco, monospace",
-  "Consolas, monospace",
-  "Menlo, monospace"
-];
-
-function uid() { return Math.random().toString(36).slice(2); }
-
-type Profile = {
-  name: string;
-  fontFamily: string;
-  color: string;
-  status: string;
-  customStatuses: string[];
-  bubble: string; // my bubble color
+type PresencePayload = {
+  typing: boolean;
+  user_id: string;
+  display_name: string;
+  font_family: string;
+  text_color: string;
+  bubble_color: string;
+  current_status: string | null;
 };
 
-type OutboxItem = { id: string; payload: Message };
-
-export default function Chat() {
-  // theme toggle
-  const [theme, setTheme] = useState<string>(() => {
-    if (typeof window === "undefined") return "light";
-    return localStorage.getItem(LS_THEME) || "light";
-  });
-  useEffect(() => {
-    if (typeof document !== "undefined") {
-      const el = document.documentElement;
-      if (theme === "dark") el.classList.add("dark");
-      else el.classList.remove("dark");
-      localStorage.setItem(LS_THEME, theme);
-    }
-  }, [theme]);
-
-  const [userId] = useState<string>(() => {
-    if (typeof window === "undefined") return uid();
-    const existing = localStorage.getItem(LS_UID);
-    if (existing) return existing;
-    const id = uid();
-    localStorage.setItem(LS_UID, id);
-    return id;
-  });
-
-  const defaultProfile: Profile = {
-    name: `Guest-${Math.floor(Math.random()*999)}`,
-    fontFamily: DEFAULT_FONTS[0],
-    color: "#111827",
-    status: "",
-    customStatuses: [],
-    bubble: "#0b93f6",
-  };
-
-  const [profile, setProfile] = useState<Profile>(() => {
-    if (typeof window === "undefined") return defaultProfile;
-    const raw = localStorage.getItem(LS_PROFILE);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as Partial<Profile>;
-        return { ...defaultProfile, ...parsed, bubble: parsed.bubble ?? defaultProfile.bubble };
-      } catch {}
-    }
-    return defaultProfile;
-  });
-  useEffect(() => {
-    if (typeof window !== "undefined") localStorage.setItem(LS_PROFILE, JSON.stringify(profile));
-  }, [profile]);
-
-  const [outbox, setOutbox] = useState<OutboxItem[]>(() => {
-    if (typeof window === "undefined") return [];
-    const raw = localStorage.getItem(LS_OUTBOX);
-    if (!raw) return [];
-    try { return JSON.parse(raw) as OutboxItem[]; } catch { return []; }
-  });
-  useEffect(() => {
-    if (typeof window !== "undefined") localStorage.setItem(LS_OUTBOX, JSON.stringify(outbox));
-  }, [outbox]);
-
-  // Room code (private rooms). Defaults to GLOBAL if none.
-  const [roomCode, setRoomCode] = useState<string>(() => {
-    if (typeof window === "undefined") return "GLOBAL";
-    return localStorage.getItem(LS_ROOM) || "GLOBAL";
-  });
-  useEffect(() => {
-    if (typeof window !== "undefined") localStorage.setItem(LS_ROOM, roomCode);
-  }, [roomCode]);
-
-
-  const [input, setInput] = useState("");
+export default function Chat({ initialRoomCode }: { initialRoomCode: string | null }) {
+  const [userId, setUserId] = useState<string | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [room, setRoom] = useState<Room | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [msgIds, setMsgIds] = useState<Set<string>>(new Set());
-  const [users, setUsers] = useState<UserPresence[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [input, setInput] = useState("");
+  const [typingMap, setTypingMap] = useState<Record<string, PresencePayload>>({});
+  const [members, setMembers] = useState<Record<string, PresencePayload>>({});
 
-  const chatEndRef = useRef<HTMLDivElement>(null);
-  const typingRef = useRef<NodeJS.Timeout | null>(null);
-  const [isTyping, setIsTyping] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [subscribed, setSubscribed] = useState(false);
-  const hasTrackedRef = useRef(false);
-
-  const supabase = useMemo(() => {
-    const c = getSupabase();
-    if (!c) setError("Missing Supabase environment variables.");
-    return c;
+  // Sign in anonymously
+  useEffect(() => {
+    (async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        await supabase.auth.signInAnonymously();
+      }
+      const { data: user } = await supabase.auth.getUser();
+      if (user.user) setUserId(user.user.id);
+    })();
   }, []);
 
-  const [channel, setChannel] = useState<ReturnType<NonNullable<typeof supabase>["channel"]> | null>(null);
-
-  // ---- Stable presence helpers ----
-  const usersHashRef = useRef<string>("");
-  const calcUsers = useCallback((chInst: ReturnType<NonNullable<typeof supabase>["channel"]>) => {
-    const state = chInst.presenceState() as Record<string, any[]>;
-    const flat: UserPresence[] = Object.values(state)
-      .flat()
-      .map((p: any) => ({
-        userId: p.userId,
-        name: p.name,
-        fontFamily: p.fontFamily,
-        color: p.color,
-        status: p.status,
-        typing: p.typing,
-      }));
-    // Always include self as a fallback
-    const hasMe = flat.some(u => u.userId === userId);
-    if (!hasMe) {
-      flat.push({
-        userId,
-        name: profile.name,
-        fontFamily: profile.fontFamily,
-        textColor: profile.color,
-        status: profile.status,
-        typing: false,
-      });
-    }
-    flat.sort((a, b) => a.name.localeCompare(b.name));
-    return flat;
-  }, [profile.name, profile.fontFamily, profile.color, profile.status, userId]);
-
-  const stableSetUsers = useCallback((chInst: ReturnType<NonNullable<typeof supabase>["channel"]>) => {
-    if (!chInst) return;
-    const next = calcUsers(chInst);
-    const hash = JSON.stringify(next.map(u => [u.userId, u.name, u.status]));
-    if (hash !== usersHashRef.current) {
-      usersHashRef.current = hash;
-      setUsers(next);
-    }
-  }, [calcUsers]);
-
-  // Channel setup
+  // Ensure profile exists
   useEffect(() => {
-    if (!supabase) return;
-    const ch = supabase.channel(`room:${roomCode}`, { config: { broadcast: { self: false }, presence: { key: userId } } });
-    setChannel(ch);
-
-    ch
-      .on("broadcast", { event: "message" }, ({ payload }) => {
-        const m = payload as Message;
-        if (msgIds.has(m.id)) return;
-        setMsgIds((prev) => new Set(prev).add(m.id));
-        setMessages((prev) => [...prev, { ...m, isSelf: m.userId === userId }]);
-      })
-      .on("presence", { event: "sync" }, () => { stableSetUsers(ch); })
-      .on("presence", { event: "join" }, () => { stableSetUsers(ch); })
-      .on("presence", { event: "leave" }, () => { stableSetUsers(ch); })
-      .subscribe(async (st) => {
-        if (st === "SUBSCRIBED") {
-          setSubscribed(true);
-          if (!hasTrackedRef.current) {
-            await ch.track({
-              userId,
-              name: profile.name,
-              fontFamily: profile.fontFamily,
-              textColor: profile.color,
-              status: profile.status,
-              typing: false
-            });
-            hasTrackedRef.current = true;
-          }
-          stableSetUsers(ch);
-          // flush outbox
-          setOutbox((prev) => {
-            prev.forEach((o) => ch.send({ type: "broadcast", event: "message", payload: o.payload }));
-            return [];
-          });
-          if (typeof window !== "undefined") localStorage.removeItem(LS_OUTBOX);
-        }
-      });
-
-    return () => {
-      try { ch.unsubscribe(); } catch {}
-      setSubscribed(false);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase, userId, roomCode]);
-
-  // Update presence when profile fields change
-  useEffect(() => {
-    if (!channel || !subscribed) return;
-    channel.track({
-      userId,
-      name: profile.name,
-      fontFamily: profile.fontFamily,
-      textColor: profile.color,
-      status: profile.status,
-      typing: isTyping
-    });
-    stableSetUsers(channel);
-  }, [profile.name, profile.fontFamily, profile.color, profile.status, isTyping, channel, userId, subscribed, stableSetUsers]);
-
-  // Visibility retrack
-  useEffect(() => {
-    if (!channel || !subscribed) return;
-    const onVis = () => {
-      if (document.visibilityState === "visible") {
-        try {
-          channel.track({
-            userId,
-            name: profile.name,
-            fontFamily: profile.fontFamily,
-            textColor: profile.color,
-            status: profile.status,
-            typing: false
-          });
-          stableSetUsers(channel);
-        } catch {}
+    if (!userId) return;
+    (async () => {
+      const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        const baseName = "Guest " + String(Math.floor(Math.random() * 900) + 100);
+        const insert = {
+          id: userId,
+          display_name: baseName,
+          font_family: "system-ui",
+          text_color: "#111827",
+          bubble_color: "#e5e7eb",
+          show_status_bar: true,
+          statuses: ["Online", "Away", "Busy"],
+          current_status: "Online"
+        };
+        const { data: created, error: e2 } = await supabase.from("profiles").insert(insert).select().single();
+        if (e2) throw e2;
+        setProfile(created);
+      } else {
+        setProfile(data);
       }
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-  }, [channel, subscribed, userId, profile.name, profile.fontFamily, profile.color, profile.status, stableSetUsers]);
+    })();
+  }, [userId]);
 
-  // optimistic send (always right aligned; shows name)
-  function sendMessage() {
+  // Room resolver: global or by code
+  useEffect(() => {
+    if (!profile) return;
+    (async () => {
+      const code = initialRoomCode || "GLOBAL";
+      if (code === "GLOBAL") {
+        // ensure global room exists
+        const { data, error } = await supabase.from("rooms").select("*").eq("code", "GLOBAL").maybeSingle();
+        if (error) throw error;
+        if (!data) {
+          const { data: created, error: e2 } = await supabase.from("rooms").insert({ code: "GLOBAL", name: "Global Room" }).select().single();
+          if (e2) throw e2;
+          setRoom(created);
+        } else setRoom(data);
+      } else {
+        const { data, error } = await supabase.from("rooms").select("*").eq("code", code).maybeSingle();
+        if (error) { alert(error.message); return; }
+        if (!data) { alert("Room code not found."); return; }
+        setRoom(data);
+      }
+    })();
+  }, [profile, initialRoomCode]);
+
+  // Load messages for room
+  useEffect(() => {
+    if (!room) return;
+    (async () => {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("room_id", room.id)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      setMessages(data ?? []);
+      listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
+    })();
+  }, [room]);
+
+  // Subscribe realtime messages
+  useEffect(() => {
+    if (!room) return;
+    const channel = supabase
+      .channel(`room:${room.id}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `room_id=eq.${room.id}` }, (payload) => {
+        setMessages((m) => [...m, payload.new as Message]);
+        listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [room]);
+
+  // Presence: typing + members list
+  useEffect(() => {
+    if (!room || !profile || !userId) return;
+    const channel = supabase.channel(`presence:${room.id}`, { config: { presence: { key: userId } } });
+
+    channel.on("presence", { event: "sync" }, () => {
+      const state = channel.presenceState() as Record<string, PresencePayload[]>;
+      const merged: Record<string, PresencePayload> = {};
+      Object.values(state).forEach((arr) => {
+        arr.forEach((p) => { merged[p.user_id] = p; });
+      });
+      setMembers(merged);
+    });
+
+    channel.on("presence", { event: "join" }, ({ newPresences }) => {
+      setMembers((curr) => ({ ...curr, ...(Object.fromEntries(newPresences.map(p => [p.user_id, p as PresencePayload]))) }));
+    });
+
+    channel.on("presence", { event: "leave" }, ({ leftPresences }) => {
+      setMembers((curr) => {
+        const copy = { ...curr };
+        leftPresences.forEach((p:any) => { delete copy[p.user_id]; });
+        return copy;
+      });
+    });
+
+    channel.subscribe(async (status) => {
+      if (status === "SUBSCRIBED") {
+        await channel.track({
+          typing: false,
+          user_id: userId,
+          display_name: profile.display_name,
+          font_family: profile.font_family,
+          text_color: profile.text_color,
+          bubble_color: profile.bubble_color,
+          current_status: profile.current_status
+        } as PresencePayload);
+      }
+    });
+
+    return () => { supabase.removeChannel(channel); };
+  }, [room, profile, userId]);
+
+  // Update presence when profile visuals change
+  useEffect(() => {
+    // This is handled ad-hoc via NameAndStatus parent calling onUpdate
+  }, [profile]);
+
+  function updatePresence(partial: Partial<PresencePayload>) {
+    // best-effort; ignore errors
+    const channel = supabase.getChannels().find(c => c.topic.startsWith("realtime:presence:presence:"));
+    if (!channel) return;
+    const me = (members[userId ?? ""] || {}) as PresencePayload;
+    // @ts-ignore
+    channel.track({ ...me, ...partial });
+  }
+
+  async function upsertProfilePartial(patch: Partial<Profile>) {
+    if (!userId) return;
+    const { data, error } = await supabase.from("profiles").update(patch).eq("id", userId).select().single();
+    if (!error && data) {
+      setProfile(data);
+      // reflect to presence
+      updatePresence({
+        display_name: data.display_name,
+        font_family: data.font_family,
+        text_color: data.text_color,
+        bubble_color: data.bubble_color,
+        current_status: data.current_status,
+        typing: false,
+        user_id: data.id
+      });
+    }
+  }
+
+  function onInputChange(v: string) {
+    setInput(v);
+    // typing presence
+    updatePresence({ typing: true });
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => updatePresence({ typing: false }), 1200);
+  }
+
+  async function send() {
+    if (!room || !profile || !userId) return;
     const text = input.trim();
     if (!text) return;
-    const m: Message = {
-      id: uid(),
-      userId,
-      name: profile.name,
-      content: text,
-      fontFamily: profile.fontFamily,
-      textColor: profile.color,
-      bubbleColor: profile.bubble,
-      ts: Date.now(),
-      isSelf: true
-    };
-    setMessages((prev) => [...prev, m]);
-    setMsgIds((prev) => new Set(prev).add(m.id));
     setInput("");
-    setIsTyping(false);
-
-    if (channel && subscribed) {
-      channel.send({ type: "broadcast", event: "message", payload: { ...m, isSelf: undefined } });
-    } else {
-      setOutbox((prev) => [...prev, { id: m.id, payload: { ...m, isSelf: undefined } }]);
-    }
+    const payload = {
+      room_id: room.id,
+      user_id: userId,
+      content: text,
+      font_family: profile.font_family,
+      text_color: profile.text_color,
+      bubble_color: profile.bubble_color
+    };
+    const { error } = await supabase.from("messages").insert(payload);
+    if (error) alert(error.message);
+    updatePresence({ typing: false });
   }
 
-  function handleTyping(val: string) {
-    setInput(val);
-    if (!channel || !subscribed) return;
-    if (typingRef.current) clearTimeout(typingRef.current);
-    setIsTyping(true);
-    typingRef.current = setTimeout(() => setIsTyping(false), 1200);
-  }
-
-  // profile setters
-  const setName = (v: string) => setProfile((p) => ({ ...p, name: v }));
-  const setFontFamily = (v: string) => setProfile((p) => ({ ...p, fontFamily: v }));
-  const setColor = (v: string) => setProfile((p) => ({ ...p, color: v }));
-  const setStatus = (v: string) => setProfile((p) => ({ ...p, status: v }));
-  const setBubble = (v: string) => setProfile((p) => ({ ...p, bubble: v }));
-  const removeCustomStatus = (v: string) => {
-    setProfile((p) => ({ ...p, customStatuses: (p.customStatuses || []).filter(s => s !== v) }));
-    if (profile.status === v) setProfile((p) => ({ ...p, status: "" }));
-  };
-
-  const addCustomStatus = (v: string) => {
-    if (!v) return;
-    setProfile((p) => ({ ...p, customStatuses: Array.from(new Set([...(p.customStatuses || []), v])) }));
-    setStatus(v);
-  };
-
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
-
-  if (error) return <ErrorPanel title="Application needs configuration" details={error} />;
-  if (!supabase) return <div className="p-6 text-sm text-gray-600 dark:text-neutral-300">Initializing…</div>;
+  const orderedMembers = useMemo(()=> Object.values(members).sort((a,b)=> (a.display_name || "").localeCompare(b.display_name || "")), [members]);
 
   return (
-    <div className="relative mx-auto flex h-[100dvh] max-w-[var(--chat-max)] bg-white dark:bg-neutral-900 shadow-sm">
-      <SidebarUsers users={users} meId={userId} />
-
-      <main className="flex min-w-0 flex-1 flex-col">
-        {/* Header / Controls */}
-        <div className="flex flex-wrap items-center gap-2 border-b dark:border-neutral-800 p-3">
-          <input
-            className="h-9 rounded-md border dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 text-sm"
-            value={profile.name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Your display name"
-          />
-
-          <select
-            className="h-9 rounded-md border dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 text-sm"
-            value={profile.fontFamily}
-            onChange={(e) => setFontFamily(e.target.value)}
-          >
-            {DEFAULT_FONTS.map((f) => (
-              <option key={f} value={f} style={{ fontFamily: f }}>
-                {f.split(",")[0]}
-              </option>
-            ))}
-          </select>
-
-          {/* Text color */}
-          <input
-            type="color"
-            className="h-9 w-12 cursor-pointer rounded-md border dark:border-neutral-700"
-            value={profile.color}
-            onChange={(e) => setColor(e.target.value)}
-            title="Text color"
-          />
-
-          {/* Bubble color */}
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-gray-600 dark:text-neutral-400">Bubble</span>
-            <input
-              type="color"
-              className="h-9 w-12 cursor-pointer rounded-md border dark:border-neutral-700"
-              value={profile.bubble}
-              onChange={(e) => setBubble(e.target.value)}
-              title="My bubble color"
-            />
-          </div>
-
-          {/* Status dropdown with custom add */}
-          <div className="flex items-center gap-1">
-            <select
-              className="h-9 rounded-md border dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 text-sm max-w-[220px]"
-              value={profile.status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              <option value="">No status</option>
-              <option value="Available">Available</option>
-              <option value="Busy">Busy</option>
-              <option value="Be right back">Be right back</option>
-              {(profile.customStatuses || []).map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const form = e.target as HTMLFormElement;
-                const input = form.elements.namedItem("customStatus") as HTMLInputElement;
-                const v = input.value.trim();
-                if (v) { addCustomStatus(v); form.reset(); }
-              }}
-              className="flex items-center gap-1"
-            >
-              <input name="customStatus" className="h-9 w-36 rounded-md border dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 text-sm" placeholder="Add custom…" />
-              <button className="h-9 rounded-md border dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800 px-3 text-sm">Add</button>
-            </form>
-          </div>
-
-
-          {/* Room controls */}
-          <div className="flex items-center gap-2">
-            <button
-              className="h-9 rounded-md border dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800 px-3 text-sm"
-              onClick={() => setRoomCode(genRoomCode())}
-              title="Create private room (generates a code)"
-            >
-              New room
-            </button>
-            <form
-              className="flex items-center gap-1"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const f = e.target as HTMLFormElement;
-                const i = f.elements.namedItem("joinCode") as HTMLInputElement;
-                const code = (i.value || "").trim().toUpperCase();
-                if (code) setRoomCode(code);
-                f.reset();
-              }}
-            >
-              <input
-                name="joinCode"
-                className="h-9 w-28 rounded-md border dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 text-sm uppercase"
-                placeholder="Join code"
-                maxLength={12}
-              />
-              <button className="h-9 rounded-md border dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800 px-3 text-sm">
-                Join
-              </button>
-            </form>
-            <div className="text-xs px-2 py-1 rounded border dark:border-neutral-700">
-              Room: <b>{roomCode}</b>
+    <div className="h-screen grid grid-cols-12">
+      {/* Left: members list, names downward */}
+      <aside className="col-span-3 border-r bg-white flex flex-col">
+        <div className="p-3 font-semibold">People in {room?.code || "..."}</div>
+        <div className="px-3 pb-2 text-xs text-gray-500">Click your name at top bar to customize</div>
+        <div className="flex-1 overflow-y-auto scrollbar-thin divide-y">
+          {orderedMembers.map((m) => (
+            <div key={m.user_id} className="p-3 flex items-center gap-3">
+              <div className="size-3 rounded-full" style={{ background: m.bubble_color }} />
+              <div className="min-w-0">
+                <div className="truncate" style={{ fontFamily: m.font_family, color: m.text_color }}>{m.display_name}</div>
+                {m.current_status && <div className="text-xs text-gray-500">{m.current_status}</div>}
+                {m.typing && <TypingDots />}
+              </div>
             </div>
+          ))}
+        </div>
+      </aside>
+
+      {/* Right: chat area */}
+      <main className="col-span-9 flex flex-col h-full">
+        {/* Name + Status editor */}
+        {profile && (
+          <div className="border-b">
+            {require("../components/NameAndStatus").default({ profile, onUpdate: upsertProfilePartial })}
           </div>
+        )}
 
-
-          {/* Custom statuses list with remove */}
-          {(profile.customStatuses && profile.customStatuses.length > 0) && (
-            <div className="flex flex-wrap items-center gap-1">
-              {profile.customStatuses.map((s) => (
-                <span key={s} className="inline-flex items-center gap-2 text-xs border dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800 rounded px-2 py-1">
-                  {s}
-                  <button
-                    type="button"
-                    className="text-red-600 hover:underline"
-                    onClick={() => removeCustomStatus(s)}
-                    title="Remove status option"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-              <button
-                type="button"
-                className="ml-2 h-7 rounded-md border dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800 px-2 text-xs"
-                onClick={() => setStatus("")}
-                title="Clear current status"
-              >
-                Clear status
-              </button>
-            </div>
-          )}
-
-                    {/* Dark mode switch */}
-          <label className="ml-auto inline-flex items-center gap-2 text-xs">
-            <input
-              type="checkbox"
-              checked={theme === "dark"}
-              onChange={(e) => setTheme(e.target.checked ? "dark" : "light")}
-            />
-            Dark mode
-          </label>
+        {/* Room controls */}
+        <div className="border-b">
+          {require("../components/RoomControls").default({ currentRoomId: room?.id ?? null, onJoinByCode: (code:string)=>{
+            if(!code) return;
+            const url = new URL(location.href);
+            url.searchParams.set("code", code.toUpperCase());
+            url.searchParams.delete("room");
+            location.href = url.toString();
+          }})}
         </div>
 
-        {/* Messages */}
-        <div className="flex-1 space-y-2 overflow-y-auto bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'8\\' height=\\'8\\'%3E%3Crect width=\\'8\\' height=\\'8\\' fill=\\'%23ffffff\\'/%3E%3Cpath d=\\'M0 0h8v8H0z\\' fill=\\'none\\'/%3E%3C/svg%3E')] dark:bg-neutral-900 p-4">
-          {messages.map((m) => <MessageBubble key={m.id} m={m} />)}
-          <div ref={chatEndRef} />
+        {/* Messages list */}
+        <div ref={listRef} className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin">
+          {messages.map((msg) => {
+            const mine = msg.user_id === userId;
+            return (
+              <div key={msg.id} className={clsx("bubble", mine ? "bubble-right" : "bubble-left")} style={{ background: mine ? msg.bubble_color : "#ffffff", color: msg.text_color, fontFamily: msg.font_family }}>
+                <div className="text-xs opacity-60 mb-0.5">{orderedMembers.find(m=>m.user_id===msg.user_id)?.display_name || "Someone"}</div>
+                <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Composer */}
-        <div className="flex items-center gap-2 border-t dark:border-neutral-800 p-3">
-          <textarea
-            className="min-h-[44px] w-full resize-none rounded-lg border dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none"
-            placeholder="Message"
+        <div className="p-3 bg-white border-t flex items-center gap-2">
+          <input
             value={input}
-            onChange={(e) => handleTyping(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-            }}
-            style={{ fontFamily: profile.fontFamily, color: profile.color }}
+            onChange={(e)=>onInputChange(e.target.value)}
+            onKeyDown={(e)=>{ if(e.key==="Enter") send(); }}
+            placeholder="Type a message…"
+            className="flex-1 px-3 py-3 rounded-full border"
+            style={{ fontFamily: profile?.font_family, color: profile?.text_color }}
           />
-          <button
-            onClick={sendMessage}
-            className={clsx(
-              "h-10 shrink-0 rounded-lg px-4 text-sm font-medium text-white",
-              input.trim() ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-300 cursor-not-allowed"
-            )}
-            disabled={!input.trim()}
-          >
-            Send
-          </button>
+          <button onClick={send} className="px-4 py-3 rounded-full bg-black text-white">Send</button>
         </div>
       </main>
     </div>

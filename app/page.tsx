@@ -1,10 +1,11 @@
-import dynamic from "next/dynamic";
-const Chat = dynamic(() => import("@/components/Chat"), { ssr: false });
+"use client";
+import Chat from "@/components/Chat";
+import { useSearchParams } from "next/navigation";
 
-export default function Page() {
-  return (
-    <div className="min-h-screen">
-      <Chat />
-    </div>
-  );
+export default function Page(){
+  const params = useSearchParams();
+  const code = params.get("code");
+  const room = params.get("room");
+  const initial = code ? code.toUpperCase() : (room === "global" ? "GLOBAL" : null);
+  return <Chat initialRoomCode={initial} />;
 }
