@@ -215,7 +215,7 @@ export default function Chat() {
               userId,
               name: profile.name,
               fontFamily: profile.fontFamily,
-              textColor: profile.color,
+              color: profile.color,
               status: profile.status,
               typing: false
             });
@@ -245,7 +245,7 @@ export default function Chat() {
       userId,
       name: profile.name,
       fontFamily: profile.fontFamily,
-      textColor: profile.color,
+      color: profile.color,
       status: profile.status,
       typing: isTyping
     });
@@ -262,7 +262,7 @@ export default function Chat() {
             userId,
             name: profile.name,
             fontFamily: profile.fontFamily,
-            textColor: profile.color,
+            color: profile.color,
             status: profile.status,
             typing: false
           });
@@ -315,6 +315,11 @@ export default function Chat() {
   const setColor = (v: string) => setProfile((p) => ({ ...p, color: v }));
   const setStatus = (v: string) => setProfile((p) => ({ ...p, status: v }));
   const setBubble = (v: string) => setProfile((p) => ({ ...p, bubble: v }));
+  const removeCustomStatus = (v: string) => {
+    setProfile((p) => ({ ...p, customStatuses: (p.customStatuses || []).filter(s => s !== v) }));
+    if (profile.status === v) setProfile((p) => ({ ...p, status: "" }));
+  };
+
   const addCustomStatus = (v: string) => {
     if (!v) return;
     setProfile((p) => ({ ...p, customStatuses: Array.from(new Set([...(p.customStatuses || []), v])) }));
@@ -439,7 +444,35 @@ export default function Chat() {
             </div>
           </div>
 
-          {/* Dark mode switch */}
+
+          {/* Custom statuses list with remove */}
+          {(profile.customStatuses && profile.customStatuses.length > 0) && (
+            <div className="flex flex-wrap items-center gap-1">
+              {profile.customStatuses.map((s) => (
+                <span key={s} className="inline-flex items-center gap-2 text-xs border dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800 rounded px-2 py-1">
+                  {s}
+                  <button
+                    type="button"
+                    className="text-red-600 hover:underline"
+                    onClick={() => removeCustomStatus(s)}
+                    title="Remove status option"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <button
+                type="button"
+                className="ml-2 h-7 rounded-md border dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800 px-2 text-xs"
+                onClick={() => setStatus("")}
+                title="Clear current status"
+              >
+                Clear status
+              </button>
+            </div>
+          )}
+
+                    {/* Dark mode switch */}
           <label className="ml-auto inline-flex items-center gap-2 text-xs">
             <input
               type="checkbox"
