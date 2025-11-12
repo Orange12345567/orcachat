@@ -44,7 +44,6 @@ export default function Chat({ roomCode = "GLOBAL" }: { roomCode?: string }) {
   const [theme, setTheme] = useState<string>(() => {
     if (typeof window === "undefined") return "light";
     return (localStorage.getItem(LS_THEME) as string) || "light";
-  });
   const [showSidebar, setShowSidebar] = useState(false);
 useEffect(() => {
     if (typeof document !== "undefined") {
@@ -62,8 +61,6 @@ useEffect(() => {
     const id = uid();
     localStorage.setItem(LS_UID, id);
     return id;
-  });
-
   const defaultProfile: Profile = {
     name: `Guest-${Math.floor(Math.random()*999)}`,
     fontFamily: DEFAULT_FONTS[0],
@@ -83,7 +80,6 @@ useEffect(() => {
       } catch {}
     }
     return defaultProfile;
-  });
   useEffect(() => {
     if (typeof window !== "undefined") localStorage.setItem(LS_PROFILE, JSON.stringify(profile));
   }, [profile]);
@@ -93,7 +89,6 @@ useEffect(() => {
     const raw = localStorage.getItem(LS_OUTBOX);
     if (!raw) return [];
     try { return JSON.parse(raw) as OutboxItem[]; } catch { return []; }
-  });
   useEffect(() => {
     if (typeof window !== "undefined") localStorage.setItem(LS_OUTBOX, JSON.stringify(outbox));
   }, [outbox]);
@@ -106,31 +101,13 @@ useEffect(() => {
     if (typeof window === "undefined") return {};
     try {
       const raw = localStorage.getItem(`${LS_ROSTER}_${roomCode}`);
-      return raw ? JSON.parse(raw) : {};
-    } catch { return {}; }
-  });
   const people: any[] = Object.values(roster).sort(
     (a: any, b: any) =>
       (Number(b.online) - Number(a.online)) ||
       ((a.name || "").localeCompare(b.name || ""))
   );
-  
-  
-  
-      return raw ? JSON.parse(raw) : {};
-    } catch { return {}; }
-  });
-  
-
-      return raw ? JSON.parse(raw) : {};
-    } catch { return {}; }
-  });
- return raw ? JSON.parse(raw) : {}; } catch { return {}; } })
-
-  
-      return raw ? JSON.parse(raw) : {};
-    } catch { return {}; }
-  });
+});
+})
   const [error, setError] = useState<string | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -173,7 +150,6 @@ useEffect(() => {
         color: profile.color,
         status: profile.status,
         typing: false,
-      });
     }
     flat.sort((a, b) => a.name.localeCompare(b.name));
     return flat;
@@ -250,7 +226,6 @@ useEffect(() => {
               color: profile.color,
               status: profile.status,
               typing: false
-            });
             hasTrackedRef.current = true;
           }
           stableSetUsers(ch);
@@ -258,11 +233,8 @@ useEffect(() => {
           setOutbox((prev) => {
             prev.forEach((o) => ch.send({ type: "broadcast", event: "message", payload: o.payload }));
             return [];
-          });
           if (typeof window !== "undefined") localStorage.removeItem(LS_OUTBOX);
         }
-      });
-
     return () => {
       try { ch.unsubscribe(); } catch {}
       setSubscribed(false);
@@ -280,7 +252,6 @@ useEffect(() => {
       color: profile.color,
       status: profile.status,
       typing: isTyping
-    });
     stableSetUsers(channel);
   }, [profile.name, profile.fontFamily, profile.color, profile.status, isTyping, channel, userId, subscribed, stableSetUsers]);
 
@@ -297,7 +268,6 @@ useEffect(() => {
             color: profile.color,
             status: profile.status,
             typing: false
-          });
           stableSetUsers(channel);
         } catch {}
       }
