@@ -9,7 +9,6 @@ import { clsx } from "clsx";
 
 
 const LS_PROFILE = "sms_groupchat_profile_v3";
-const ROOM = `room:${roomCode}`;
 const LS_UID = "sms_groupchat_uid_v3";
 const LS_OUTBOX = "sms_groupchat_outbox_v2";
 const LS_THEME = "sms_groupchat_theme";
@@ -39,6 +38,7 @@ type Profile = {
 type OutboxItem = { id: string; payload: Message };
 
 export default function Chat({ roomCode = "GLOBAL" }: { roomCode?: string }) {
+  const ROOM = `room:${roomCode}`;
   // theme toggle
   const [theme, setTheme] = useState<string>(() => {
     if (typeof window === "undefined") return "light";
