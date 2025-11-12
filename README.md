@@ -1,4 +1,4 @@
-# SMS-Style Group Chat — v1.0.5
+# SMS-Style Group Chat — v1.0.6
 
 **Fixes & features:**
 - No duplicate self-messages (self echo disabled + dedupe by id)

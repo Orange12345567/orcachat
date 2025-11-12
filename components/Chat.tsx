@@ -62,14 +62,16 @@ export default function Chat() {
   });
 
   const [profile, setProfile] = useState<Profile>(() => {
-    if (typeof window === "undefined") {
-      return { name: `Guest-${Math.floor(Math.random()*999)}`, fontFamily: DEFAULT_FONTS[0], color: "#111827", status: "", customStatuses: [], bubble: "#0b93f6" };
-    }
+    const defaultProfile: Profile = { name: `Guest-${Math.floor(Math.random()*999)}`, fontFamily: DEFAULT_FONTS[0], color: "#111827", status: "", customStatuses: [], bubble: "#0b93f6" };
+    if (typeof window === "undefined") return defaultProfile;
     const raw = localStorage.getItem(LS_PROFILE);
     if (raw) {
-      try { return { bubble: "#0b93f6", ...(JSON.parse(raw) as Profile) }; } catch {}
+      try {
+        const parsed = JSON.parse(raw) as Partial<Profile>;
+        return { ...defaultProfile, ...parsed, bubble: parsed.bubble ?? defaultProfile.bubble } as Profile;
+      } catch {}
     }
-    return { name: `Guest-${Math.floor(Math.random()*999)}`, fontFamily: DEFAULT_FONTS[0], color: "#111827", status: "", customStatuses: [], bubble: "#0b93f6" };
+    return defaultProfile;
   });
   useEffect(() => {
     if (typeof window !== "undefined") localStorage.setItem(LS_PROFILE, JSON.stringify(profile));
