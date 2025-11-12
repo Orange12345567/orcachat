@@ -7,6 +7,7 @@ import SidebarUsers, { UserPresence } from "./SidebarUsers";
 import MessageBubble, { Message } from "./MessageBubble";
 import ErrorPanel from "./ErrorPanel";
 import { clsx } from "clsx";
+import { FONT_OPTIONS } from "@/lib/fonts";
 import RoomControls from "./RoomControls";
 import RoomSettingsBar from "./RoomSettingsBar";
 
@@ -16,27 +17,6 @@ const LS_UID = "sms_groupchat_uid_v3";
 const LS_OUTBOX = "sms_groupchat_outbox_v2";
 const LS_THEME = "sms_groupchat_theme";
 
-const DEFAULT_FONTS = [
-  "Inter, sans-serif",
-  "DM Sans, sans-serif",
-  "Rubik, sans-serif",
-  "Nunito, sans-serif",
-  "Poppins, sans-serif",
-  "Montserrat, sans-serif",
-  "Work Sans, sans-serif",
-  "Figtree, sans-serif",
-  "Raleway, sans-serif",
-  "Noto Sans, sans-serif",
-  "Merriweather, serif",
-  "JetBrains Mono, monospace",
-  "Arial, sans-serif",
-  "Georgia, serif",
-  "Courier New, monospace",
-  "Comic Sans MS, cursive",
-  "Trebuchet MS, sans-serif",
-  "Times New Roman, serif",
-  "Verdana, sans-serif"
-];
 
 function uid() { return Math.random().toString(36).slice(2); }
 
@@ -79,7 +59,7 @@ export default function Chat({ roomCode = "GLOBAL" }: { roomCode?: string }) {
 
   const defaultProfile: Profile = {
     name: `Guest-${Math.floor(Math.random()*999)}`,
-    fontFamily: DEFAULT_FONTS[0],
+    fontFamily: FONT_OPTIONS[0],
     color: "#111827",
     status: "",
     customStatuses: [],
@@ -329,7 +309,7 @@ const [roomBg, setRoomBg] = useState<string>("#ffffff");
             value={profile.fontFamily}
             onChange={(e) => setFontFamily(e.target.value)}
           >
-            {DEFAULT_FONTS.map((f) => (
+            {FONT_OPTIONS.map((f) => (
               <option key={f} value={f} style={{ fontFamily: f }}>
                 {f.split(",")[0]}
               </option>
