@@ -284,7 +284,7 @@ export default function Chat() {
       name: profile.name,
       content: text,
       fontFamily: profile.fontFamily,
-      textColor: profile.color,
+      color: profile.color,
       bubbleColor: profile.bubble,
       ts: Date.now(),
       isSelf: true
