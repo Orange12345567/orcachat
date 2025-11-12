@@ -2,21 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --chat-max: 920px;
-}
-
-body {
-  @apply bg-gray-100 text-gray-900;
-}
+:root { --chat-max: 920px; }
+body { @apply bg-gray-100 text-gray-900; }
 
 /* SMS-like bubble tails */
 .bubble:after {
   content: "";
   position: absolute;
   bottom: 0.15rem;
-  width: 0;
-  height: 0;
+  width: 0; height: 0;
 }
 .bubble.me:after {
   right: -6px;

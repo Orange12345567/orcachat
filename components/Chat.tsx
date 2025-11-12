@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
 import SidebarUsers, { UserPresence } from "./SidebarUsers";
 import MessageBubble, { Message } from "./MessageBubble";
@@ -8,8 +8,9 @@ import DebugBar from "./DebugBar";
 import { clsx } from "clsx";
 
 const ROOM = "room:global";
-const LS_KEY = "sms_groupchat_profile_v1";
-
+const LS_PROFILE = "sms_groupchat_profile_v2";
+const LS_UID = "sms_groupchat_uid_v2";
+const LS_OUTBOX = "sms_groupchat_outbox_v1";
 const DEFAULT_FONTS = [
   "Inter, system-ui, sans-serif",
   "Arial, Helvetica, sans-serif",
@@ -21,9 +22,7 @@ const DEFAULT_FONTS = [
   "Verdana, sans-serif",
 ];
 
-function uid() {
-  return Math.random().toString(36).slice(2);
-}
+function uid() { return Math.random().toString(36).slice(2); }
 
 type Profile = {
   name: string;
@@ -33,38 +32,44 @@ type Profile = {
   customStatuses: string[];
 };
 
+type OutboxItem = { id: string; payload: Message };
+
 export default function Chat() {
+  // persistent uid
   const [userId] = useState<string>(() => {
-    // persist a per-device userId too
-    const k = "sms_groupchat_uid_v1";
-    const existing = typeof window !== "undefined" ? localStorage.getItem(k) : null;
+    if (typeof window === "undefined") return uid();
+    const existing = localStorage.getItem(LS_UID);
     if (existing) return existing;
     const id = uid();
-    if (typeof window !== "undefined") localStorage.setItem(k, id);
+    localStorage.setItem(LS_UID, id);
     return id;
   });
 
-  // Load profile from localStorage
+  // profile with persistence
   const [profile, setProfile] = useState<Profile>(() => {
     if (typeof window === "undefined") {
       return { name: `Guest-${Math.floor(Math.random()*999)}`, fontFamily: DEFAULT_FONTS[0], color: "#111827", status: "", customStatuses: [] };
     }
-    const raw = localStorage.getItem(LS_KEY);
+    const raw = localStorage.getItem(LS_PROFILE);
     if (raw) {
-      try {
-        const p = JSON.parse(raw) as Profile;
-        return { customStatuses: [], ...p };
-      } catch {}
+      try { return JSON.parse(raw) as Profile; } catch {}
     }
     return { name: `Guest-${Math.floor(Math.random()*999)}`, fontFamily: DEFAULT_FONTS[0], color: "#111827", status: "", customStatuses: [] };
   });
-
-  // sync to localStorage whenever profile changes
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem(LS_KEY, JSON.stringify(profile));
-    }
+    if (typeof window !== "undefined") localStorage.setItem(LS_PROFILE, JSON.stringify(profile));
   }, [profile]);
+
+  // outbox persistence (unsent messages, flushed when subscribed)
+  const [outbox, setOutbox] = useState<OutboxItem[]>(() => {
+    if (typeof window === "undefined") return [];
+    const raw = localStorage.getItem(LS_OUTBOX);
+    if (!raw) return [];
+    try { return JSON.parse(raw) as OutboxItem[]; } catch { return []; }
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined") localStorage.setItem(LS_OUTBOX, JSON.stringify(outbox));
+  }, [outbox]);
 
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -85,40 +90,23 @@ export default function Chat() {
     return c;
   }, []);
 
-  // Hook WebSocket events via internal fetch if available (best effort)
-  useEffect(() => {
+  // channel lifecycle with auto-retry
+  const [channel, setChannel] = useState<ReturnType<NonNullable<typeof supabase>["channel"]> | null>(null);
+  const [retry, setRetry] = useState(0);
+
+  const setupChannel = useCallback(() => {
     if (!supabase) return;
-    // We can't directly read ws, but we can attempt a ping by opening a channel then marking connected on subscribe.
-    setWsConnected(true); // If Supabase client was constructed, assume ws is available; channel subscribe will confirm
-  }, [supabase]);
+    const ch = supabase.channel(ROOM, { config: { broadcast: { self: true }, presence: { key: userId } } });
+    setChannel(ch);
 
-  const channel = useMemo(() => {
-    if (!supabase) return null;
-    try {
-      return supabase.channel(ROOM, { config: { broadcast: { self: true }, presence: { key: userId } } });
-    } catch (e: any) {
-      console.error("Channel create failed", e);
-      setError(e?.message || "Failed to create realtime channel.");
-      return null;
-    }
-  }, [supabase, userId]);
-
-  // Auto-scroll on new messages
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  // Join presence + listeners
-  useEffect(() => {
-    if (!channel) return;
-    const sub = channel
+    ch
       .on("broadcast", { event: "message" }, ({ payload }) => {
         const m = payload as Message;
         setMessages((prev) => [...prev, { ...m, isSelf: m.userId === userId }]);
         setLastEvent("message");
       })
       .on("presence", { event: "sync" }, () => {
-        const state = channel.presenceState() as Record<string, any[]>;
+        const state = ch.presenceState() as Record<string, any[]>;
         const flat: UserPresence[] = Object.values(state).flat().map((p: any) => ({
           userId: p.userId,
           name: p.name,
@@ -131,12 +119,11 @@ export default function Chat() {
         setUsers(flat);
         setLastEvent("presence:sync");
       })
-      .on("presence", { event: "join" }, () => setLastEvent("presence:join"))
-      .on("presence", { event: "leave" }, () => setLastEvent("presence:leave"))
       .subscribe(async (st) => {
         if (st === "SUBSCRIBED") {
           setSubscribed(true);
-          await channel.track({
+          setWsConnected(true);
+          await ch.track({
             userId,
             name: profile.name,
             fontFamily: profile.fontFamily,
@@ -144,32 +131,43 @@ export default function Chat() {
             status: profile.status,
             typing: false
           });
+          // flush outbox
+          setOutbox((prev) => {
+            prev.forEach((o) => ch.send({ type: "broadcast", event: "message", payload: o.payload }));
+            return [];
+          });
+          localStorage.removeItem(LS_OUTBOX);
+        } else {
+          setSubscribed(false);
         }
       });
 
+    // safety reconnect timer
+    const t = setTimeout(() => {
+      if (!subscribed) {
+        try { ch.unsubscribe(); } catch {}
+        setChannel(null);
+        setRetry((r) => r + 1);
+      }
+    }, 5000);
+
     return () => {
-      channel.unsubscribe();
+      clearTimeout(t);
+      try { ch.unsubscribe(); } catch {}
       setSubscribed(false);
     };
-  }, [channel, userId, profile.name, profile.fontFamily, profile.color, profile.status]);
+  }, [supabase, userId, profile.name, profile.fontFamily, profile.color, profile.status, subscribed]);
 
-  // Update presence when profile fields change
   useEffect(() => {
-    if (!channel || !subscribed) return;
-    channel.track({
-      userId,
-      name: profile.name,
-      fontFamily: profile.fontFamily,
-      color: profile.color,
-      status: profile.status,
-      typing: isTyping
-    });
-  }, [profile.name, profile.fontFamily, profile.color, profile.status, isTyping, channel, userId, subscribed]);
+    if (!supabase) return;
+    setupChannel();
+  }, [supabase, retry, setupChannel]);
 
+  // optimistic add + queue send
   function sendMessage() {
-    if (!channel || !subscribed) return;
     const text = input.trim();
     if (!text) return;
+
     const m: Message = {
       id: uid(),
       userId,
@@ -178,10 +176,20 @@ export default function Chat() {
       fontFamily: profile.fontFamily,
       color: profile.color,
       ts: Date.now(),
+      isSelf: true
     };
-    channel.send({ type: "broadcast", event: "message", payload: m });
+
+    // show immediately (optimistic)
+    setMessages((prev) => [...prev, m]);
     setInput("");
     setIsTyping(false);
+
+    if (channel && subscribed) {
+      channel.send({ type: "broadcast", event: "message", payload: { ...m, isSelf: undefined } });
+    } else {
+      // queue for later
+      setOutbox((prev) => [...prev, { id: m.id, payload: { ...m, isSelf: undefined } }]);
+    }
   }
 
   function handleTyping(val: string) {
@@ -192,7 +200,7 @@ export default function Chat() {
     typingRef.current = setTimeout(() => setIsTyping(false), 1200);
   }
 
-  // UI handlers for profile
+  // profile setters
   const setName = (v: string) => setProfile((p) => ({ ...p, name: v }));
   const setFontFamily = (v: string) => setProfile((p) => ({ ...p, fontFamily: v }));
   const setColor = (v: string) => setProfile((p) => ({ ...p, color: v }));
@@ -203,12 +211,10 @@ export default function Chat() {
     setStatus(v);
   };
 
-  if (error) {
-    return <ErrorPanel title="Application needs configuration" details={error} />;
-  }
-  if (!supabase) {
-    return <div className="p-6 text-sm text-gray-600">Initializing…</div>;
-  }
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  if (error) return <ErrorPanel title="Application needs configuration" details={error} />;
+  if (!supabase) return <div className="p-6 text-sm text-gray-600">Initializing…</div>;
 
   return (
     <div className="relative mx-auto flex h-[100dvh] max-w-[var(--chat-max)] bg-white shadow-sm">
@@ -265,18 +271,11 @@ export default function Chat() {
                 const form = e.target as HTMLFormElement;
                 const input = form.elements.namedItem("customStatus") as HTMLInputElement;
                 const v = input.value.trim();
-                if (v) {
-                  addCustomStatus(v);
-                  form.reset();
-                }
+                if (v) { addCustomStatus(v); form.reset(); }
               }}
               className="flex items-center gap-1"
             >
-              <input
-                name="customStatus"
-                className="h-9 w-36 rounded-md border px-2 text-sm"
-                placeholder="Add custom…"
-              />
+              <input name="customStatus" className="h-9 w-36 rounded-md border px-2 text-sm" placeholder="Add custom…" />
               <button className="h-9 rounded-md border bg-gray-50 px-3 text-sm">Add</button>
             </form>
           </div>
@@ -284,9 +283,7 @@ export default function Chat() {
 
         {/* Messages */}
         <div className="flex-1 space-y-2 overflow-y-auto bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'8\\' height=\\'8\\'%3E%3Crect width=\\'8\\' height=\\'8\\' fill=\\'%23ffffff\\'/%3E%3Cpath d=\\'M0 0h8v8H0z\\' fill=\\'none\\'/%3E%3C/svg%3E')] p-4">
-          {messages.map((m) => (
-            <MessageBubble key={m.id} m={m} />
-          ))}
+          {messages.map((m) => <MessageBubble key={m.id} m={m} />)}
           <div ref={chatEndRef} />
         </div>
 
@@ -294,25 +291,21 @@ export default function Chat() {
         <div className="flex items-center gap-2 border-t p-3">
           <textarea
             className="min-h-[44px] w-full resize-none rounded-lg border px-3 py-2 text-sm focus:outline-none"
-            placeholder={subscribed ? "Message" : "Connecting to realtime…"}
+            placeholder="Message"
             value={input}
             onChange={(e) => handleTyping(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-              }
+              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
             }}
             style={{ fontFamily: profile.fontFamily, color: profile.color }}
-            disabled={!subscribed}
           />
           <button
             onClick={sendMessage}
             className={clsx(
               "h-10 shrink-0 rounded-lg px-4 text-sm font-medium text-white",
-              input.trim() && subscribed ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-300 cursor-not-allowed"
+              input.trim() ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-300 cursor-not-allowed"
             )}
-            disabled={!input.trim() || !subscribed}
+            disabled={!input.trim()}
           >
             Send
           </button>

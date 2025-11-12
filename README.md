@@ -1,18 +1,9 @@
-# SMS-Style Group Chat — PERSIST + DEBUG BUILD
+# SMS-Style Group Chat — OPTIMISTIC + RETRY BUILD (v1.0.4)
 
-- **Local persistence** of name/font/color/status/custom statuses using `localStorage` (survives refresh).
-- **Realtime connection bar** shows whether you're connected/subscribed and last event received.
-- **Send buffer guard**: messages only send after channel is subscribed.
-- Still **no database** (temporary/live-only).
+Fixes:
+- **Optimistic messages:** your text shows instantly on your tab.
+- **Outbox queue:** messages typed before subscribe are saved and sent once connected.
+- **Auto-reconnect:** if subscribe stalls, it retries.
+- **Local persistence:** name, font, color, status, custom statuses, and device uid persist through refresh.
 
-## Env (Vercel)
-```
-NEXT_PUBLIC_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_ANON_KEY
-```
-
-## Run
-```bash
-npm i
-npm run dev
-```
+Still no database (temporary/live-only). Set env vars and deploy on Vercel.
