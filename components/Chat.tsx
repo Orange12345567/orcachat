@@ -1,22 +1,29 @@
 
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
 import SidebarUsers, { UserPresence } from "./SidebarUsers";
 import MessageBubble, { Message } from "./MessageBubble";
 import ErrorPanel from "./ErrorPanel";
 import { clsx } from "clsx";
-import { FONT_OPTIONS } from "@/lib/fonts";
-import RoomControls from "./RoomControls";
-import RoomSettingsBar from "./RoomSettingsBar";
 
 
 const LS_PROFILE = "sms_groupchat_profile_v3";
+const ROOM = `room:${roomCode}`;
 const LS_UID = "sms_groupchat_uid_v3";
 const LS_OUTBOX = "sms_groupchat_outbox_v2";
 const LS_THEME = "sms_groupchat_theme";
 
+const DEFAULT_FONTS = [
+  "Inter, system-ui, sans-serif",
+  "Arial, Helvetica, sans-serif",
+  "Georgia, serif",
+  "Courier New, monospace",
+  "Comic Sans MS, cursive",
+  "Trebuchet MS, sans-serif",
+  "Times New Roman, serif",
+  "Verdana, sans-serif",
+];
 
 function uid() { return Math.random().toString(36).slice(2); }
 
@@ -32,10 +39,9 @@ type Profile = {
 type OutboxItem = { id: string; payload: Message };
 
 export default function Chat({ roomCode = "GLOBAL" }: { roomCode?: string }) {
-  const ROOM = `room:${roomCode}`;
-
   // theme toggle
-  const [theme, setTheme] = useState<string>(() => {
+  const [theme, setTheme]
+  const [showSidebar, setShowSidebar] = useState(false); = useState<string>(() => {
     if (typeof window === "undefined") return "light";
     return localStorage.getItem(LS_THEME) || "light";
   });
@@ -59,7 +65,7 @@ export default function Chat({ roomCode = "GLOBAL" }: { roomCode?: string }) {
 
   const defaultProfile: Profile = {
     name: `Guest-${Math.floor(Math.random()*999)}`,
-    fontFamily: FONT_OPTIONS[0],
+    fontFamily: DEFAULT_FONTS[0],
     color: "#111827",
     status: "",
     customStatuses: [],
@@ -110,16 +116,7 @@ export default function Chat({ roomCode = "GLOBAL" }: { roomCode?: string }) {
     return c;
   }, []);
 
-    const router = useRouter();
-  const [joinCode, setJoinCode] = useState("");
-  function makeCode(len = 6) {
-    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    let s = "";
-    for (let i = 0; i < len; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)];
-    return s;
-  }
-const [roomName, setRoomName] = useState<string>(roomCode === "GLOBAL" ? "Global Room" : `Room ${roomCode}`);
-const [roomBg, setRoomBg] = useState<string>("#ffffff");
+  const [dmTarget, setDmTarget] = useState<UserPresence | null>(null);
   const [channel, setChannel] = useState<ReturnType<NonNullable<typeof supabase>["channel"]> | null>(null);
 
   // ---- Stable presence helpers ----
@@ -165,7 +162,7 @@ const [roomBg, setRoomBg] = useState<string>("#ffffff");
   // Channel setup
   useEffect(() => {
     if (!supabase) return;
-    const ch = supabase.channel(ROOM, { config: { broadcast: { self: false }, presence: { key: userId } } });
+    const ch = supabase.channel(dmTarget ? `dm:${[userId, dmTarget.userId].sort().join("-")}` : ROOM, { config: { broadcast: { self: false }, presence: { key: userId } } });
     setChannel(ch);
 
     ch
@@ -175,9 +172,13 @@ const [roomBg, setRoomBg] = useState<string>("#ffffff");
         setMsgIds((prev) => new Set(prev).add(m.id));
         setMessages((prev) => [...prev, { ...m, isSelf: m.userId === userId }]);
       })
-      .on("presence", { event: "sync" }, () => { stableSetUsers(ch); const st = ch.presenceState() as Record<string, any[]>; const first = (Object.values(st).flat()[0] ?? {}) as { roomName?: string; roomBg?: string }; if (!roomName && first.roomName) setRoomName(first.roomName); if (first.roomBg) setRoomBg(first.roomBg); })
-      .on("presence", { event: "join" }, () => { stableSetUsers(ch); const st = ch.presenceState() as Record<string, any[]>; const first = (Object.values(st).flat()[0] ?? {}) as { roomName?: string; roomBg?: string }; if (!roomName && first.roomName) setRoomName(first.roomName); if (first.roomBg) setRoomBg(first.roomBg); })
-      .on("presence", { event: "leave" }, () => { stableSetUsers(ch); const st = ch.presenceState() as Record<string, any[]>; const first = (Object.values(st).flat()[0] ?? {}) as { roomName?: string; roomBg?: string }; if (!roomName && first.roomName) setRoomName(first.roomName); if (first.roomBg) setRoomBg(first.roomBg); })
+      .on("broadcast", { event: "delete" }, ({ payload }) => {
+        const { id } = payload as { id: string };
+        setMessages(prev => prev.filter(m => m.id !== id));
+      })
+      .on("presence", { event: "sync" }, () => { stableSetUsers(ch); })
+      .on("presence", { event: "join" }, () => { stableSetUsers(ch); })
+      .on("presence", { event: "leave" }, () => { stableSetUsers(ch); })
       .subscribe(async (st) => {
         if (st === "SUBSCRIBED") {
           setSubscribed(true);
@@ -212,7 +213,14 @@ const [roomBg, setRoomBg] = useState<string>("#ffffff");
   // Update presence when profile fields change
   useEffect(() => {
     if (!channel || !subscribed) return;
-    channel.track({ userId, name: profile.name, fontFamily: profile.fontFamily, color: profile.color, status: profile.status, typing: isTyping, roomName, roomBg });
+    channel.track({
+      userId,
+      name: profile.name,
+      fontFamily: profile.fontFamily,
+      color: profile.color,
+      status: profile.status,
+      typing: isTyping
+    });
     stableSetUsers(channel);
   }, [profile.name, profile.fontFamily, profile.color, profile.status, isTyping, channel, userId, subscribed, stableSetUsers]);
 
@@ -239,7 +247,14 @@ const [roomBg, setRoomBg] = useState<string>("#ffffff");
   }, [channel, subscribed, userId, profile.name, profile.fontFamily, profile.color, profile.status, stableSetUsers]);
 
   // optimistic send (always right aligned; shows name)
-  function sendMessage() {
+  function deleteMessage(id: string){
+  setMessages(prev => prev.filter(m => m.id !== id));
+  if (channel && subscribed) {
+    channel.send({ type: "broadcast", event: "delete", payload: { id } });
+  }
+}
+
+function sendMessage() {
     const text = input.trim();
     if (!text) return;
     const m: Message = {
@@ -291,8 +306,15 @@ const [roomBg, setRoomBg] = useState<string>("#ffffff");
   if (!supabase) return <div className="p-6 text-sm text-gray-600 dark:text-neutral-300">Initializing…</div>;
 
   return (
-    <div className="relative mx-auto flex h-[100dvh] max-w-[var(--chat-max)] shadow-sm" style={{ background: roomBg }}>
-      <SidebarUsers users={users} meId={userId} />
+    <div className="relative mx-auto flex h-[100dvh] max-w-[var(--chat-max)] bg-white dark:bg-neutral-900 shadow-sm">
+      {showSidebar && (
+        <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={()=>setShowSidebar(false)}>
+          <div className="absolute left-0 top-0 h-full w-72 bg-white dark:bg-neutral-900" onClick={(e)=>e.stopPropagation()}>
+            <SidebarUsers users={users} meId={userId}  meId={userId} onStartDM={(u)=>setDmTarget(u)} />
+          </div>
+        </div>
+      )}
+      <div className="hidden md:block"><SidebarUsers users={users} meId={userId} /></div>
 
       <main className="flex min-w-0 flex-1 flex-col">
         {/* Header / Controls */}
@@ -309,7 +331,7 @@ const [roomBg, setRoomBg] = useState<string>("#ffffff");
             value={profile.fontFamily}
             onChange={(e) => setFontFamily(e.target.value)}
           >
-            {FONT_OPTIONS.map((f) => (
+            {DEFAULT_FONTS.map((f) => (
               <option key={f} value={f} style={{ fontFamily: f }}>
                 {f.split(",")[0]}
               </option>
@@ -337,10 +359,18 @@ const [roomBg, setRoomBg] = useState<string>("#ffffff");
             />
           </div>
 
-          {/* Status dropdown with custom add */}
+          {/* Header right actions */}
+<div className="ml-auto hidden sm:flex items-center gap-2">
+  <span className="text-xs opacity-70">Code: <b>{roomCode}</b></span>
+  <a href="/room/GLOBAL" className="h-9 rounded-md border dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 text-xs flex items-center">Go to Global</a>
+  <a href="/" className="h-9 rounded-md border dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 text-xs flex items-center">Go to Main Menu</a>
+</div>
+
+{/* Status dropdown with custom add */}
+
           <div className="flex items-center gap-1">
             <select
-              className="h-9 rounded-md border dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 text-sm max-w-[220px]"
+              className="h-9 rounded-md border dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 text-sm max-w-[220px] mr-1"
               value={profile.status}
               onChange={(e) => setStatus(e.target.value)}
             >
@@ -352,6 +382,16 @@ const [roomBg, setRoomBg] = useState<string>("#ffffff");
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
+            <button onClick={()=> setStatus("")} className="h-9 rounded-md border dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 text-xs mr-1" title="Clear current status">Clear</button>
+            {(profile.customStatuses || []).length > 0 && (
+              <div className="flex flex-wrap gap-1 max-w-[220px]">
+                {(profile.customStatuses || []).map((s) => (
+                  <button key={s} onClick={() => setProfile((p)=>({ ...p, customStatuses: (p.customStatuses || []).filter(x => x !== s) }))} className="text-[11px] px-2 py-1 rounded border dark:border-neutral-700">
+                    ✕ {s}
+                  </button>
+                ))}
+              </div>
+            )}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
