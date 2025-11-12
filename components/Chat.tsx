@@ -172,7 +172,7 @@ export default function Chat() {
         userId,
         name: profile.name,
         fontFamily: profile.fontFamily,
-        textColor: profile.color,
+        color: profile.color,
         status: profile.status,
         typing: false,
       });
