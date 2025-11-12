@@ -195,9 +195,9 @@ const [roomBg, setRoomBg] = useState<string>("#ffffff");
         setMsgIds((prev) => new Set(prev).add(m.id));
         setMessages((prev) => [...prev, { ...m, isSelf: m.userId === userId }]);
       })
-      .on("presence", { event: "sync" }, () => { stableSetUsers(ch); const st = ch.presenceState() as any; const anyUser = Object.values(st).flat()[0]; if(anyUser){ if(!roomName && anyUser.roomName) setRoomName(anyUser.roomName); if(anyUser.roomBg) setRoomBg(anyUser.roomBg); } })
-      .on("presence", { event: "join" }, () => { stableSetUsers(ch); const st = ch.presenceState() as any; const anyUser = Object.values(st).flat()[0]; if(anyUser){ if(!roomName && anyUser.roomName) setRoomName(anyUser.roomName); if(anyUser.roomBg) setRoomBg(anyUser.roomBg); } })
-      .on("presence", { event: "leave" }, () => { stableSetUsers(ch); const st = ch.presenceState() as any; const anyUser = Object.values(st).flat()[0]; if(anyUser){ if(!roomName && anyUser.roomName) setRoomName(anyUser.roomName); if(anyUser.roomBg) setRoomBg(anyUser.roomBg); } })
+      .on("presence", { event: "sync" }, () => { stableSetUsers(ch); const st = ch.presenceState() as Record<string, any[]>; const first = (Object.values(st).flat()[0] ?? {}) as { roomName?: string; roomBg?: string }; if (!roomName && first.roomName) setRoomName(first.roomName); if (first.roomBg) setRoomBg(first.roomBg); })
+      .on("presence", { event: "join" }, () => { stableSetUsers(ch); const st = ch.presenceState() as Record<string, any[]>; const first = (Object.values(st).flat()[0] ?? {}) as { roomName?: string; roomBg?: string }; if (!roomName && first.roomName) setRoomName(first.roomName); if (first.roomBg) setRoomBg(first.roomBg); })
+      .on("presence", { event: "leave" }, () => { stableSetUsers(ch); const st = ch.presenceState() as Record<string, any[]>; const first = (Object.values(st).flat()[0] ?? {}) as { roomName?: string; roomBg?: string }; if (!roomName && first.roomName) setRoomName(first.roomName); if (first.roomBg) setRoomBg(first.roomBg); })
       .subscribe(async (st) => {
         if (st === "SUBSCRIBED") {
           setSubscribed(true);
