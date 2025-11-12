@@ -182,7 +182,7 @@ useEffect(() => {
       .on("broadcast", { event: "delete" }, ({ payload }) => {
         const { id } = payload as { id: string };
         setMessages(prev => prev.filter(m => m.id !== id));
-
+      })
       .on("presence", { event: "sync" }, () => { stableSetUsers(ch); 
         // Update roster from presence
         try {
@@ -197,6 +197,7 @@ useEffect(() => {
           Object.keys(next).forEach(id => { if (!onlineIds.has(id)) next[id].online = false; });
           setRoster(next); saveRoster(next);
         } catch {}
+      })
 
       .on("presence", { event: "join" }, () => { stableSetUsers(ch); 
         try {
@@ -205,6 +206,7 @@ useEffect(() => {
           Object.values(st).forEach(arr => (arr as any[]).forEach((p: any) => { next[p.userId] = { ...(next[p.userId]||{}), userId: p.userId, name: p.name, status: p.status, fontFamily: p.fontFamily, color: p.color, online: true, lastSeen: Date.now() }; }));
           setRoster(next); saveRoster(next);
         } catch {}
+      })
 
       .on("presence", { event: "leave" }, () => { stableSetUsers(ch); 
         try {
