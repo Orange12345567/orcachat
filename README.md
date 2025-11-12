@@ -21,3 +21,6 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY= your anon key
 
 ## v1.0.9
 - Fix TypeScript error about `channel` used before declaration by refactoring presence updater.
+
+## v1.1.0
+- Removed stray timer code causing TypeScript error (`t` not defined).

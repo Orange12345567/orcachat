@@ -196,8 +196,7 @@ export default function Chat() {
       });
 
         return () => {
-      clearTimeout(t);
-      try { ch.unsubscribe(); } catch {}
+try { ch.unsubscribe(); } catch {}
       setSubscribed(false);
     };
   }, [supabase, userId, profile.name, profile.fontFamily, profile.color, profile.status, subscribed, msgIds, updateUsers]);
