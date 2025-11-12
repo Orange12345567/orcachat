@@ -40,12 +40,12 @@ type OutboxItem = { id: string; payload: Message };
 
 export default function Chat({ roomCode = "GLOBAL" }: { roomCode?: string }) {
   // theme toggle
-  const [theme, setTheme]
-  const [showSidebar, setShowSidebar] = useState(false); = useState<string>(() => {
+  const [theme, setTheme] = useState<string>(() => {
     if (typeof window === "undefined") return "light";
-    return localStorage.getItem(LS_THEME) || "light";
+    return (localStorage.getItem(LS_THEME) as string) || "light";
   });
-  useEffect(() => {
+  const [showSidebar, setShowSidebar] = useState(false);
+useEffect(() => {
     if (typeof document !== "undefined") {
       const el = document.documentElement;
       if (theme === "dark") el.classList.add("dark");
