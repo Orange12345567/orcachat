@@ -150,6 +150,7 @@ useEffect(() => {
         status: profile.status,
         typing: false,
       });
+    }
     flat.sort((a, b) => a.name.localeCompare(b.name));
     return flat;
   }, [profile.name, profile.fontFamily, profile.color, profile.status, userId]);
