@@ -1,13 +1,11 @@
-# SMS-Style Group Chat (Temporary / Live Only) — FIXED
+# SMS-Style Group Chat — PERSIST + DEBUG BUILD
 
-This build avoids server-side initialization of Supabase and uses a **client-only, lazy** Supabase client to prevent `supabaseUrl is required` during SSR.
+- **Local persistence** of name/font/color/status/custom statuses using `localStorage` (survives refresh).
+- **Realtime connection bar** shows whether you're connected/subscribed and last event received.
+- **Send buffer guard**: messages only send after channel is subscribed.
+- Still **no database** (temporary/live-only).
 
-## What changed
-- `app/page.tsx` uses `dynamic(..., { ssr: false })` so Chat renders **only on the client**.
-- `lib/supabaseClient.ts` exposes `getSupabase()` which lazily reads `NEXT_PUBLIC_...` envs **at runtime on the client** (no module-level createClient).
-- Clear error message if envs are missing.
-
-## Env Vars (Vercel → Project Settings → Environment Variables)
+## Env (Vercel)
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_ANON_KEY
@@ -18,6 +16,3 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_ANON_KEY
 npm i
 npm run dev
 ```
-
-## Deploy
-Push to GitHub → Import on Vercel → set env vars → Deploy.
