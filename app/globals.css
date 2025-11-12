@@ -2,14 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body, :root { height: 100%; }
-body { @apply bg-gray-100 text-gray-900; }
+:root { --chat-max: 920px; }
 
-/* Some SMS-like bubble helpers */
-.bubble {
-  @apply max-w-[80%] rounded-2xl px-4 py-2 shadow;
+/* SMS-like bubble tails */
+.bubble:after {
+  content: "";
+  position: absolute;
+  bottom: 0.15rem;
+  width: 0; height: 0;
 }
-.bubble-left { @apply bg-white border border-gray-200; }
-.bubble-right { @apply ml-auto; }
-.scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
-.scrollbar-thin::-webkit-scrollbar-thumb { background: #c7c7c7; border-radius: 9999px; }
+.bubble.me:after {
+  right: -6px;
+  border-left: 6px solid var(--bubble-me, #0b93f6);
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+}
+.bubble.them:after {
+  left: -6px;
+  border-right: 6px solid var(--bubble-them, #e5e7eb);
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+}

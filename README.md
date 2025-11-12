@@ -1,28 +1,29 @@
-# SMS-Style Groupchat (Next.js + Supabase, Vercel)
+# SMS-Style Group Chat — v1.0.6
 
-Features:
-- Global room auto-join (big groupchat), SMS bubble style
-- Private rooms with join-by-code and invite links
-- Real-time messages + typing indicators (Supabase Realtime Presence)
-- Change display name anytime (fonts + emojis allowed)
-- Choose text color & bubble color; synced to everyone
-- Optional status bar next to your name (dropdown of unlimited custom statuses)
-- Tons of fonts; pick any + live preview
+**Fixes & features:**
+- No duplicate self-messages (self echo disabled + dedupe by id)
+- Your messages always **right-aligned** and show **your name** above the bubble
+- Sidebar shows **currently online** users with status
+- **Dark mode** switch (persisted)
+- **Bubble color picker** for your own bubbles (persisted)
+- Optimistic UI + outbox; local persistence for name/font/color/status/custom statuses
 
-## Quick Start
-1) Create a Supabase project -> copy Project URL and anon key.
-2) Add **Tables & Policies**: run the SQL in `supabase/schema.sql` inside Supabase SQL Editor.
-3) On Vercel: New Project -> import this repo/zip -> add env vars:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-4) Deploy. Visit the URL and chat!
-
-## Local Dev
-```bash
-pnpm i # or npm i / yarn
-pnpm dev # http://localhost:3000
+Env on Vercel:
+```
+NEXT_PUBLIC_SUPABASE_URL= https://YOUR-PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY= your anon key
 ```
 
-## Notes
-- Anonymous auth is used. Each browser session is a user.
-- Invite link for rooms looks like `/?code=ABC123`. You can also enter it in the join-by-code box.
+
+## v1.0.8
+- Presence sidebar fix (track on subscribe or first sync).
+- Removed on-screen debug panel.
+
+## v1.0.9
+- Fix TypeScript error about `channel` used before declaration by refactoring presence updater.
+
+## v1.1.0
+- Removed stray timer code causing TypeScript error (`t` not defined).
+
+## v1.1.1
+- Sidebar presence made stable (no flicker) via hashed diffing + self-fallback + visibility re-track.
