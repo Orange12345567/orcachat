@@ -40,6 +40,8 @@ type OutboxItem = { id: string; payload: Message };
 
 type ChatProps = { roomCode?: string };
 export default function Chat({ roomCode }: ChatProps) {
+  void effectiveRoomCode; // keep prop referenced to avoid unused var warnings
+  void effectiveRoomCode; // keep prop referenced to avoid unused var warnings
   // theme toggle
   const [theme, setTheme] = useState<string>(() => {
     if (typeof window === "undefined") return "light";
