@@ -291,40 +291,11 @@ export default function Chat({ roomCode = "GLOBAL" }: { roomCode?: string }) {
               <input type="color" value={profile.bubble} onChange={e=>setProfile({...profile, bubble: e.target.value})} />
             </div>
             
-            <div className="flex items-center gap-2">
-              <span className="w-20">Font</span>
-              <div className="flex-1 max-h-40 overflow-auto rounded border border-neutral-700 p-2 grid grid-cols-2 md:grid-cols-4 gap-2">
-                {FONT_OPTIONS.map(f => (
-                  <button
-                    key={f}
-                    onClick={()=>setProfile({...profile, fontFamily: f})}
-                    className={"rounded border px-2 py-2 text-left hover:bg-neutral-900 " + (profile.fontFamily===f ? "border-white" : "border-neutral-700")}
-                    style={{ fontFamily: f }}
-                    title={f}
-                  >
-                    {f.split(",")[0]}
-                  </button>
-                ))}
-              </div>
+            <div className="flex items-center gap-2"><span className="w-20">Font</span><select value={profile.fontFamily} onChange={e=>setProfile({...profile, fontFamily: e.target.value})} className="flex-1 rounded border px-2 py-1 border-neutral-700 bg-neutral-900 text-white" style={{ fontFamily: profile.fontFamily }}>{FONT_OPTIONS.map(f => (<option key={f} value={f} style={{ fontFamily: f }}>{f.split(",")[0]}</option>))}</select></div>
             </div>
 
-            {/* font grid */}
-            <div className="col-span-1 md:col-span-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {FONT_OPTIONS.slice(0, 16).map(f => (
-                  <button
-                    key={f}
-                    onClick={()=>setProfile({...profile, fontFamily: f})}
-                    className={"w-full rounded border px-2 py-2 text-left hover:bg-neutral-900 " + (profile.fontFamily===f ? "border-white" : "border-neutral-700")}
-                    style={{ fontFamily: f }}
-                  >
-                    {f}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-20">Status</span>
+            
+            <div className="flex items-center gap-2"><span className="w-20">Status</span>
               <input value={profile.status || ""} onChange={e=>setProfile({...profile, status: e.target.value})} className="flex-1 rounded border px-2 py-1 border-neutral-700 bg-neutral-900" />
             </div>
           </div>
