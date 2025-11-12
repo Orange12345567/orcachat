@@ -3,7 +3,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import type { Message, Profile, Room } from "@/types";
 import TypingDots from "./TypingDots";
-import { v4 as uuidv4 } from "uuid";
 import clsx from "clsx";
 
 type PresencePayload = {
