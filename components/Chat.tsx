@@ -4,7 +4,6 @@ import { getSupabase } from "@/lib/supabaseClient";
 import SidebarUsers, { UserPresence } from "./SidebarUsers";
 import MessageBubble, { Message } from "./MessageBubble";
 import ErrorPanel from "./ErrorPanel";
-import DebugBar from "./DebugBar";
 import { clsx } from "clsx";
 
 const ROOM = "room:global";
@@ -97,9 +96,26 @@ export default function Chat() {
   const typingRef = useRef<NodeJS.Timeout | null>(null);
   const [isTyping, setIsTyping] = useState(false);
 
-  const [wsConnected, setWsConnected] = useState(false);
-  const [subscribed, setSubscribed] = useState(false);
-  const [lastEvent, setLastEvent] = useState<string | undefined>(undefined);
+    const [subscribed, setSubscribed] = useState(false);
+  const hasTrackedRef = useRef(false);
+  
+  const updateUsers = useCallback(() => {
+    if (!channel) return;
+    const state = channel.presenceState() as Record<string, any[]>;
+    const flat: UserPresence[] = Object.values(state)
+      .flat()
+      .map((p: any) => ({
+        userId: p.userId,
+        name: p.name,
+        fontFamily: p.fontFamily,
+        color: p.color,
+        status: p.status,
+        typing: p.typing,
+      }));
+    flat.sort((a, b) => a.name.localeCompare(b.name));
+    setUsers(flat);
+  }, [channel]);
+
 
   const supabase = useMemo(() => {
     const c = getSupabase();
@@ -122,27 +138,38 @@ export default function Chat() {
         if (msgIds.has(m.id)) return; // dedupe by id
         setMsgIds((prev) => new Set(prev).add(m.id));
         setMessages((prev) => [...prev, { ...m, isSelf: m.userId === userId }]);
-        setLastEvent("message");
-      })
+              })
       .on("presence", { event: "sync" }, () => {
-        const state = ch.presenceState() as Record<string, any[]>;
-        const flat: UserPresence[] = Object.values(state).flat().map((p: any) => ({
-          userId: p.userId,
-          name: p.name,
-          fontFamily: p.fontFamily,
-          color: p.color,
-          status: p.status,
-          typing: p.typing,
-        }));
-        flat.sort((a, b) => a.name.localeCompare(b.name));
-        setUsers(flat);
-        setLastEvent("presence:sync");
-      })
+        updateUsers();
+        if (!hasTrackedRef.current) {
+          try {
+            ch.track({ userId, name: profile.name, fontFamily: profile.fontFamily, color: profile.color, status: profile.status, typing: false });
+            hasTrackedRef.current = true;
+          } catch {}
+        }
+              })
+      .on("presence", { event: "join" }, () => {
+        updateUsers();
+        if (!hasTrackedRef.current) {
+          try {
+            ch.track({ userId, name: profile.name, fontFamily: profile.fontFamily, color: profile.color, status: profile.status, typing: false });
+            hasTrackedRef.current = true;
+          } catch {}
+        }
+              })
+      .on("presence", { event: "leave" }, () => {
+        updateUsers();
+        if (!hasTrackedRef.current) {
+          try {
+            ch.track({ userId, name: profile.name, fontFamily: profile.fontFamily, color: profile.color, status: profile.status, typing: false });
+            hasTrackedRef.current = true;
+          } catch {}
+        }
+              })
       .subscribe(async (st) => {
         if (st === "SUBSCRIBED") {
           setSubscribed(true);
-          setWsConnected(true);
-          await ch.track({
+                    await ch.track({
             userId,
             name: profile.name,
             fontFamily: profile.fontFamily,
@@ -150,6 +177,13 @@ export default function Chat() {
             status: profile.status,
             typing: false
           });
+          updateUsers();
+        if (!hasTrackedRef.current) {
+          try {
+            ch.track({ userId, name: profile.name, fontFamily: profile.fontFamily, color: profile.color, status: profile.status, typing: false });
+            hasTrackedRef.current = true;
+          } catch {}
+        }
           // flush outbox
           setOutbox((prev) => {
             prev.forEach((o) => ch.send({ type: "broadcast", event: "message", payload: o.payload }));
@@ -161,21 +195,12 @@ export default function Chat() {
         }
       });
 
-    // guard timer: retry if not subscribed within 5s
-    const t = setTimeout(() => {
-      if (!subscribed) {
-        try { ch.unsubscribe(); } catch {}
-        setChannel(null);
-        setRetry((r) => r + 1);
-      }
-    }, 5000);
-
-    return () => {
+        return () => {
       clearTimeout(t);
       try { ch.unsubscribe(); } catch {}
       setSubscribed(false);
     };
-  }, [supabase, userId, profile.name, profile.fontFamily, profile.color, profile.status, subscribed, msgIds]);
+  }, [supabase, userId, profile.name, profile.fontFamily, profile.color, profile.status, subscribed, msgIds, updateUsers]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -357,13 +382,6 @@ export default function Chat() {
           </button>
         </div>
       </main>
-
-      <DebugBar
-        connected={wsConnected}
-        subscribed={subscribed}
-        url={process.env.NEXT_PUBLIC_SUPABASE_URL ? `${process.env.NEXT_PUBLIC_SUPABASE_URL.replace("https://","wss://")}/realtime/v1` : undefined}
-        lastEvent={lastEvent}
-      />
     </div>
   );
 }

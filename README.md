@@ -13,3 +13,8 @@ Env on Vercel:
 NEXT_PUBLIC_SUPABASE_URL= https://YOUR-PROJECT.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY= your anon key
 ```
+
+
+## v1.0.8
+- Presence sidebar fix (track on subscribe or first sync).
+- Removed on-screen debug panel.
